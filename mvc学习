@@ -1,0 +1,87 @@
+package my;
+
+import java.util.List;
+import java.util.Map;
+
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import af.sql.c3p0.AfSimpleDB;
+import af.sql.util.AfSqlWhere;
+import af.web.AfFormData;
+import af.web.freemarker.AfSimpleMVC;
+import my.db.Picture;
+
+@WebServlet("/index.do")
+public class IndexPage extends AfSimpleMVC
+{
+
+	@Override
+	protected String execute(HttpServletRequest req, HttpServletResponse resp,
+			Map<String, Object> model)	throws Exception
+	{
+		// 从URL里获取参数
+		AfFormData query = AfFormData.parse(req.getQueryString(), "UTF-8");
+		int pageNumber = query.getInt("p", 1);
+		String tag = query.getString("tag", "");
+		
+		// 查询条件 (暂无)
+		AfSqlWhere asw = new AfSqlWhere();
+		if(tag.length() > 0)
+			asw.addLike("tag", "%" + tag + "%");
+		
+		// 页码计算
+		int count = getCount(asw.toString()); // 一共多少条记录
+		int pageSize = 12; // 每页显示多少条
+		int pageCount = count / pageSize; // 一共多少页
+		if (count % pageSize != 0)
+			pageCount += 1;
+
+		// 排序
+		String order = " ORDER BY ID DESC ";
+		// 条数限制
+		String limit = String.format(" LIMIT %d,%d ", pageSize * (pageNumber - 1), pageSize);
+
+		String sql = "select * from picture " + asw + order + limit;
+		System.out.println("查询: " + sql);
+
+		// 查询, 每一行转成  Map
+		List<Map> rows = AfSimpleDB.query(sql, 0);
+
+		// 处理数据，转成前台需要的格式
+		String contextPath = req.getContextPath();
+
+		// 数据放在 model里
+		model.put("count", count);
+		model.put("pageNumber", pageNumber);
+		model.put("pageCount", pageCount);
+		model.put("rows", rows);
+		model.put("tag", tag);
+		
+		for (Map<String,String> row : rows)
+		{
+			// 拼凑出图片的显示URL
+			String storePath = row.get("storePath");			
+			String url = contextPath + storePath;
+			row.put("url", url);
+		}
+		
+		return "/index.html";
+	}
+
+	// 使用 SQL 里的 COUNT 函数来查询一共有多少条记录
+	private int getCount(String where) throws Exception
+	{
+		String sql = " select count(id) from picture " + where;
+		String[] row = AfSimpleDB.get(sql);
+		if(row != null)
+		{
+			return Integer.valueOf( row[0]);
+		}
+		return 0;
+	}
+}
